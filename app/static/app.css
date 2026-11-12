@@ -1,0 +1,534 @@
+/* Поведение активного нажатия и адаптация к высоте окна. */
+.pbar .btn {
+  background: #17171a;
+  color: white;
+  border-color: #17171a;
+}
+.pbar .btn:active {
+  background: white;
+  color: #17171a;
+}
+.side {
+  flex: 0 0 256px;
+}
+.main {
+  min-height: 100vh;
+}
+.side .logout {
+  margin-top: auto;
+}
+.grid2 {
+  flex: 1;
+  min-height: 0;
+}
+.widget {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.widget .rows {
+  overflow: auto;
+  flex: 1;
+}
+.wfoot {
+  margin-top: auto;
+}
+.list-head {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  gap: 10px;
+}
+.rows:empty:after {
+  content: "Задач пока нет";
+  display: block;
+  color: var(--faint);
+  padding: 20px;
+}
+.trow .t {
+  cursor: pointer;
+  color: inherit;
+}
+.st {
+  background: none;
+  border: 0;
+  font-size: 22px;
+  cursor: pointer;
+  color: #9a9ba2;
+  padding: 0;
+  width: 24px;
+}
+.st.progressing {
+  color: var(--accent);
+}
+.st.completed {
+  color: var(--ok);
+}
+.trow.done .t {
+  text-decoration: line-through;
+  color: var(--faint);
+}
+.meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.panel {
+  padding: 20px;
+}
+.panel h2 {
+  margin-top: 0;
+}
+.form textarea {
+  width: 100%;
+  min-height: 150px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  padding: 12px;
+  font: inherit;
+  resize: vertical;
+}
+.form input[type="date"],
+.form select {
+  width: 100%;
+}
+.form .field.full {
+  grid-column: 1/-1;
+}
+.editor-preview {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: auto;
+}
+.editor-preview img {
+  max-width: 100%;
+}
+.error {
+  color: var(--warn);
+}
+.login {
+  max-width: 420px;
+  margin: 12vh auto;
+  padding: 30px;
+}
+.login form {
+  display: grid;
+  gap: 14px;
+}
+.login input {
+  width: 100%;
+}
+.dialog {
+  border: 0;
+  border-radius: 10px;
+  box-shadow: 0 10px 50px #0004;
+  max-width: min(600px, 95vw);
+  max-height: 85vh;
+}
+.dialog::backdrop {
+  background: #0008;
+}
+.dialog ul {
+  max-height: 40vh;
+  overflow: auto;
+}
+.dialog .actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.project-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 20px;
+}
+.project-list a {
+  display: block;
+  padding: 12px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+.pbar {
+  flex-wrap: wrap;
+}
+.toolbar {
+  gap: 8px;
+}
+.description {
+  white-space: pre-wrap;
+}
+.description.markdown {
+  white-space: normal;
+}
+.description img {
+  max-width: 100%;
+}
+.tree-toggle {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--muted);
+}
+.tags {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.tagbox input {
+  min-width: 120px;
+}
+.history-item {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.mobile-label {
+  display: none;
+}
+@media (min-width: 901px) {
+  body:has(.home) {
+    overflow: hidden;
+  }
+  .home {
+    height: 100vh;
+  }
+  .home .grid2 {
+    height: 0;
+  }
+  .home .widget .rows {
+    min-height: 0;
+  }
+}
+@media (max-width: 900px) {
+  .grid2 {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .widget {
+    min-height: 260px;
+  }
+  .project-layout {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 720px) {
+  .side {
+    flex: 1 1 100%;
+    padding: 12px;
+    gap: 10px;
+  }
+  .side .nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .side .navh,
+  .side .logout {
+    display: none;
+  }
+  .main {
+    padding: 20px 14px;
+    min-height: auto;
+  }
+  .form {
+    display: block;
+  }
+  .form .field {
+    margin-bottom: 16px;
+  }
+  .meta .proj,
+  .meta .chip {
+    display: none;
+  }
+  .head h1 {
+    font-size: 23px;
+  }
+}
+
+[hidden] {
+  display: none !important;
+}
+.editor:has(.editor-preview:not([hidden])) {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.editor-preview {
+  white-space: normal;
+}
+.editor-preview pre {
+  overflow: auto;
+}
+@media (max-width: 720px) {
+  .editor:has(.editor-preview:not([hidden])) {
+    grid-template-columns: 1fr;
+  }
+}
+.dd {
+  position: relative;
+}
+.dd > .input {
+  width: 100%;
+}
+.combo-menu {
+  z-index: 5;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+}
+.combo-menu .mi {
+  cursor: pointer;
+}
+.combo-menu small {
+  color: var(--faint);
+}
+.side .nav a span:not(.cnt) {
+  white-space: nowrap;
+}
+.head .quick {
+  flex: 0 1 380px;
+  height: 42px;
+}
+.stats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.widget > .stats {
+  padding: 12px 16px;
+}
+.project-layout {
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+}
+.plist {
+  border-right: 1px solid var(--line);
+  min-width: 0;
+}
+.pbody {
+  min-width: 0;
+}
+.pbody .head h1 {
+  font-size: 22px;
+}
+.pbody > .list {
+  overflow: hidden;
+}
+.dates {
+  align-self: flex-start;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.task-detail > .list {
+  flex: 1 1 600px;
+}
+.task-detail > .peek {
+  flex: 0 1 340px;
+}
+.task-detail .panel h1 {
+  font-size: 24px;
+}
+.detail-section {
+  border-top: 1px solid var(--line);
+  padding-top: 22px;
+  margin-top: 22px;
+}
+.detail-section h2 {
+  font-size: 16px;
+  margin: 0 0 14px;
+}
+.detail-section .seg {
+  margin-top: 8px;
+}
+.task-menu {
+  position: relative;
+}
+.task-menu summary {
+  list-style: none;
+}
+.task-menu .menu {
+  position: absolute;
+  right: 0;
+  top: 42px;
+  z-index: 4;
+  min-width: 180px;
+}
+.task-menu .mi {
+  width: 100%;
+  border: 0;
+  background: white;
+  font: inherit;
+  text-align: left;
+}
+.subtask-section > .card {
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
+.widget .whead {
+  flex-wrap: nowrap;
+}
+.widget .ptog {
+  white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .project-layout {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .plist {
+    max-width: none;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .pbody {
+    padding: 18px;
+    width: 100%;
+  }
+  .pbody .stats {
+    min-width: 0;
+  }
+  .stat {
+    min-width: 90px;
+  }
+  .whead {
+    flex-wrap: wrap !important;
+  }
+  .head .quick {
+    flex: 1 1 100%;
+  }
+  .task-detail > .peek {
+    flex: 1 1 100%;
+  }
+  .trow {
+    min-width: 0;
+  }
+  .trow .t {
+    min-width: 0;
+  }
+  .lhead {
+    min-width: 0;
+  }
+  .lhead .sp {
+    min-width: 0;
+  }
+  .pbody .lhead .btn {
+    white-space: normal;
+  }
+  .side .nav a span:not(.cnt) {
+    white-space: normal;
+  }
+}
+.task-detail > .list > .panel {
+  padding: 36px;
+}
+.task-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.task-detail .task-heading h1 {
+  font-size: 32px;
+  margin: 0;
+  line-height: 1.2;
+}
+.heading-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.task-actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+.status-waiting {
+  background: #f0f0ec;
+  color: #5e5f66;
+}
+.status-in_progress {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.status-done {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.peek h2.sec {
+  font:
+    700 11px Inter,
+    system-ui,
+    sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin: 0 0 16px;
+}
+@media (max-width: 720px) {
+  .side .logout {
+    display: inline-flex;
+    margin-top: 0;
+    align-self: flex-start;
+  }
+  .task-detail > .list > .panel {
+    padding: 20px;
+  }
+  .task-heading {
+    flex-wrap: wrap;
+  }
+  .task-detail .task-heading h1 {
+    font-size: 25px;
+  }
+  .task-actions {
+    flex-wrap: wrap;
+  }
+}
+
+/* Поля и переключатели сохраняют размеры и типографику исходных форм. */
+input.input,
+textarea.input {
+  color: var(--ink);
+  font: inherit;
+}
+.form .field > .seg {
+  align-self: flex-start;
+}
+.form .editor textarea {
+  border: 0;
+  border-radius: 0;
+  font:
+    14px/1.6 ui-monospace,
+    Menlo,
+    monospace;
+}
+.editor:has(.editor-preview:not([hidden])) {
+  gap: 0;
+}
+.editor-preview {
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--surface-2);
+}
+button.chip,
+.chip button {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+.chip button {
+  background: transparent;
+  color: var(--muted);
+}
+.list-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}

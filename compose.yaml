@@ -1,0 +1,20 @@
+name: todo
+services:
+  todo:
+    image: todo-local:latest
+    build: .
+    network_mode: bridge
+    ports:
+      - "127.0.0.1:18080:8080"
+    volumes:
+      - todo_data:/data
+    restart: unless-stopped
+    labels:
+      purpose: persistent
+      todo.project: todo
+      todo.purpose: persistent
+volumes:
+  todo_data:
+    labels:
+      todo.project: todo
+      todo.purpose: persistent

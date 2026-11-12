@@ -1,0 +1,16 @@
+.git
+.venv
+.qa-venv
+__pycache__
+.pytest_cache
+data
+artifacts
+*.sqlite3
+*.sqlite3-*
+.env
+secrets
+git.txt
+todo-design
+UI
+tests
+docs

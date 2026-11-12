@@ -1,0 +1,12 @@
+.venv/
+.qa-venv/
+__pycache__/
+.pytest_cache/
+data/
+artifacts/
+*.sqlite3
+*.sqlite3-*
+*.pyc
+.env
+secrets/
+git.txt
