@@ -532,3 +532,169 @@ button.chip,
   font-size: 12px;
   color: var(--muted);
 }
+/* Шрифты также действуют на нативные диалоги и элементы вне .app. */
+body {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+body,
+dialog,
+button,
+input,
+textarea,
+select {
+  font-family: Inter, system-ui, sans-serif;
+}
+h1,
+h2,
+h3,
+.brand {
+  font-family: Manrope, Inter, sans-serif;
+}
+.editor textarea,
+.form .editor textarea,
+.title-in,
+.stat b {
+  font-family: Inter, system-ui, sans-serif;
+}
+.md code,
+.md pre {
+  font-family: ui-monospace, Menlo, monospace;
+}
+.project-dialog {
+  width: min(980px, calc(100vw - 32px));
+  max-width: none;
+  max-height: min(90vh, 1100px);
+  padding: 0;
+  overflow: auto;
+}
+.project-dialog form {
+  display: flex;
+  flex-direction: column;
+}
+.project-dialog-body {
+  padding: 28px;
+}
+.project-dialog h2 {
+  margin: 0 0 22px;
+  font-size: 24px;
+}
+.project-form-fields {
+  padding: 0;
+}
+.project-form-fields .editor textarea {
+  min-height: 180px;
+}
+.project-dialog .error {
+  margin: 12px 0 0;
+}
+.project-description {
+  margin-top: 8px;
+}
+.project-description p {
+  margin: 0 0 8px;
+}
+.project-labels {
+  margin-top: 8px;
+}
+.color-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.color-palette,
+.color-recent {
+  display: grid;
+  grid-template-columns: repeat(10, 32px);
+  gap: 8px;
+}
+.color-swatch,
+.color-empty {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+}
+.color-swatch {
+  border: 2px solid transparent;
+  background: var(--swatch);
+  cursor: pointer;
+}
+.color-swatch.selected {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.color-empty {
+  background: var(--surface-2);
+  border: 1px dashed var(--line-strong);
+}
+.color-recent-title {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.color-rgb {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.color-rgb label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.color-rgb input {
+  width: 66px;
+  height: 40px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  padding: 0 8px;
+  font-size: 14px;
+}
+.color-rgb input[name="hex"] {
+  width: 100px;
+}
+.color-preview {
+  display: inline-block;
+  width: 40px;
+  height: 40px;
+  border-radius: 7px;
+  border: 1px solid var(--line-strong);
+  flex: none;
+}
+.selected-color {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+@media (max-width: 720px) {
+  .project-dialog-body {
+    padding: 18px;
+  }
+  .color-palette,
+  .color-recent {
+    width: 100%;
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .color-swatch,
+  .color-empty {
+    width: 100%;
+    aspect-ratio: 1;
+    height: auto;
+  }
+  .color-picker {
+    width: 100%;
+    min-width: 0;
+    padding: 12px;
+  }
+}

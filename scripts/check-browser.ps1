@@ -34,6 +34,8 @@ create_user('qa_b', 'qa-password-two')
     if ($LASTEXITCODE -ne 0) { throw 'Ошибка подготовки тестовых пользователей' }
     & $qaPython scripts/browser_acceptance.py
     $resultCode = $LASTEXITCODE
+    & $qaPython scripts/browser_annotations.py
+    if ($LASTEXITCODE -ne 0) { $resultCode = $LASTEXITCODE }
 } finally {
     # Лог сохраняется до удаления; tmpfs не создаёт постоянного Docker-тома.
     docker logs $checkName 2>&1 | Out-File -LiteralPath (Join-Path $qaOutput 'docker.log') -Encoding utf8

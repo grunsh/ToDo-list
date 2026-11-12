@@ -404,36 +404,232 @@ function peek(t) {
 function projectPage(id) {
   let p = projects.find((x) => x.id === id) || projects[0];
   let arr = p ? tasks.filter((t) => t.project_id === p.id) : [];
-  return `<div class="head"><div><h1>Проекты</h1><div class="sub">Все ваши проекты в одном месте</div></div><div class="sp"></div>${button("＋ Создать новый проект", "projectForm()", "btn pri")}</div><div class="card project-layout"><aside class="plist"><label class="input">⌕ <input placeholder="Поиск проектов" oninput="document.querySelectorAll('.plist a').forEach(x=>x.hidden=!x.textContent.toLowerCase().includes(this.value.toLowerCase()))"></label>${projects.map((x) => `<a data-go class="${p?.id === x.id ? "on" : ""}" href="/projects/${x.id}"><span class="dot" style="background:${esc(x.color)}"></span><span>${esc(x.name)}</span><span class="c">${tasks.filter((t) => t.project_id === x.id).length}</span></a>`).join("")}</aside><div class="pbody">${p ? `<div class="head"><div><h1>${esc(p.name)}</h1><div class="sub">${esc(p.description)}</div></div><div class="sp"></div>${button("Изменить", `projectForm('${p.id}')`)}</div>${stats(arr, true)}${listBlock("Задачи · сначала новые", arr, "project", { tree: true, extra: `<a data-go class="btn pri" href="/tasks/new?project=${p.id}">＋ Задача в проект</a>` })}` : "<div>Создайте первый проект</div>"}</div></div>`;
+  return `<div class="head"><div><h1>Проекты</h1><div class="sub">Все ваши проекты в одном месте</div></div><div class="sp"></div>${button("＋ Создать новый проект", "projectForm()", "btn pri")}</div><div class="card project-layout"><aside class="plist"><label class="input">⌕ <input placeholder="Поиск проектов" oninput="document.querySelectorAll('.plist a').forEach(x=>x.hidden=!x.textContent.toLowerCase().includes(this.value.toLowerCase()))"></label>${projects.map((x) => `<a data-go class="${p?.id === x.id ? "on" : ""}" href="/projects/${x.id}"><span class="dot" style="background:${esc(x.color)}"></span><span>${esc(x.name)}</span><span class="c">${tasks.filter((t) => t.project_id === x.id).length}</span></a>`).join("")}</aside><div class="pbody">${p ? `<div class="head"><div><h1>${esc(p.name)}</h1><div class="sub project-description md">${p.description_html || ""}</div><div class="tags project-labels">${p.labels.map((label) => `<span class="chip">${esc(label)}</span>`).join("")}</div></div><div class="sp"></div>${button("Изменить", `projectForm('${p.id}')`)}</div>${stats(arr, true)}${listBlock("Задачи · сначала новые", arr, "project", { tree: true, extra: `<a data-go class="btn pri" href="/tasks/new?project=${p.id}">＋ Задача в проект</a>` })}` : "<div>Создайте первый проект</div>"}</div></div>`;
 }
-function projectForm(id = "") {
-  let p = projects.find((x) => x.id === id) || {
+// Форма проекта содержит собственное состояние. Цвет фиксируется в истории
+// только после успешного ответа сервера, поэтому отмена не меняет историю.
+async function projectForm(id = "") {
+  const project = projects.find((x) => x.id === id) || {
     name: "",
     description: "",
+    description_format: "text",
+    labels: [],
     color: "#3451D1",
   };
-  let d = document.createElement("dialog");
-  d.className = "dialog";
-  d.innerHTML = `<h2>${id ? "Изменить проект" : "Новый проект"}</h2><form><label class="field">Название<input class="input" name="name" required value="${esc(p.name)}"></label><br><label class="field">Описание<textarea class="input" name="description">${esc(p.description)}</textarea></label><br><label class="field">Цвет<input type="color" name="color" value="${esc(p.color)}"></label><p class="error"></p><div class="actions"><button type="button" class="btn cancel">Отмена</button><button class="btn pri">Сохранить</button></div></form>`;
-  document.body.append(d);
-  d.querySelector(".cancel").onclick = () => d.close();
-  d.querySelector("form").onsubmit = async (e) => {
-    e.preventDefault();
+  let recent;
+  try {
+    recent = await api("/project-colors");
+  } catch (error) {
+    alert(error.message);
+    return;
+  }
+  const presets = [
+    "#3451D1",
+    "#1D7A4C",
+    "#8A4FD8",
+    "#B23F0B",
+    "#C42C57",
+    "#007F91",
+    "#D27600",
+    "#6952A3",
+    "#A03385",
+    "#526B18",
+  ];
+  const dialog = document.createElement("dialog");
+  dialog.className = "dialog project-dialog";
+  dialog.innerHTML = `
+    <form id="project-form" novalidate>
+      <div class="project-dialog-body">
+        <h2>${id ? "Изменить проект" : "Новый проект"}</h2>
+        <div class="form project-form-fields">
+          <div class="field full"><label for="project-name">Название проекта</label><input class="input title-in" id="project-name" name="name" required maxlength="200" value="${esc(project.name)}" placeholder="Название проекта"></div>
+          <div class="field full"><span class="lbl">Описание</span>
+            <div class="seg" aria-label="Формат описания проекта"><button type="button" data-project-format="text">Текст</button><button type="button" data-project-format="markdown">Markdown</button></div>
+            <div class="editor"><textarea name="description" aria-label="Описание проекта" maxlength="20000" placeholder="Описание проекта">${esc(project.description)}</textarea><div class="editor-preview md" aria-label="Предпросмотр описания проекта" hidden></div></div>
+          </div>
+          <div class="field full"><label for="project-label-input">Метки</label><div class="tagbox project-tags"></div><input id="project-label-input" class="input" list="project-label-options" placeholder="Метка, Enter — добавить" autocomplete="off"><datalist id="project-label-options">${[...new Set(projects.flatMap((p) => p.labels))].map((label) => `<option value="${esc(label)}"></option>`).join("")}</datalist></div>
+          <div class="field full"><span class="lbl">Цвет проекта</span>
+            <div class="color-picker">
+              <div class="seg" aria-label="Способ выбора цвета"><button type="button" data-color-tab="palette" class="on">Палитра</button><button type="button" data-color-tab="rgb">RGB</button></div>
+              <div class="color-palette" role="group" aria-label="Палитра цветов">${presets.map((color) => `<button type="button" class="color-swatch" data-color="${color}" style="--swatch:${color}" aria-label="${color}" title="${color}"></button>`).join("")}</div>
+              <div class="color-rgb" hidden><label>R<input type="number" name="red" min="0" max="255" step="1" inputmode="numeric"></label><label>G<input type="number" name="green" min="0" max="255" step="1" inputmode="numeric"></label><label>B<input type="number" name="blue" min="0" max="255" step="1" inputmode="numeric"></label><label>HEX<input name="hex" aria-label="HEX" maxlength="7" pattern="#[0-9A-Fa-f]{6}"></label><span class="color-preview" aria-label="Выбранный цвет"></span></div>
+              <div class="color-recent-title">Последние цвета</div><div class="color-recent" aria-label="Последние цвета">${Array.from({ length: 20 }, (_, i) => (recent[i] ? `<button type="button" class="color-swatch" data-color="${esc(recent[i])}" style="--swatch:${esc(recent[i])}" aria-label="Последний цвет ${esc(recent[i])}" title="${esc(recent[i])}"></button>` : '<span class="color-empty" aria-hidden="true"></span>')).join("")}</div>
+              <div class="selected-color"><span class="color-preview" aria-hidden="true"></span><span class="color-value"></span></div>
+            </div>
+          </div>
+        </div>
+        <p class="error" role="alert"></p>
+      </div>
+      <div class="foot"><span class="sp"></span><button type="button" class="btn cancel">Отмена</button><button class="btn pri">Сохранить</button></div>
+    </form>`;
+  document.body.append(dialog);
+  const form = dialog.querySelector("form");
+  let format = project.description_format,
+    projectLabels = [...project.labels],
+    color = project.color.toUpperCase(),
+    version = 0;
+  const input = (name) => form.elements.namedItem(name);
+  const labelInput = dialog.querySelector("#project-label-input");
+  function drawLabels() {
+    const box = dialog.querySelector(".project-tags");
+    box.replaceChildren();
+    projectLabels.forEach((label, index) => {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.append(document.createTextNode(label + " "));
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "×";
+      remove.setAttribute("aria-label", "Удалить метку " + label);
+      remove.onclick = () => {
+        projectLabels.splice(index, 1);
+        drawLabels();
+      };
+      chip.append(remove);
+      box.append(chip);
+    });
+  }
+  function addProjectLabel() {
+    const value = labelInput.value.trim().slice(0, 100);
+    if (value && !projectLabels.includes(value)) projectLabels.push(value);
+    labelInput.value = "";
+    drawLabels();
+  }
+  labelInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === ",") {
+      event.preventDefault();
+      addProjectLabel();
+    }
+  });
+  async function updatePreview() {
+    const pane = dialog.querySelector(".editor-preview");
+    pane.hidden = format !== "markdown";
+    dialog
+      .querySelectorAll("[data-project-format]")
+      .forEach((button) =>
+        button.classList.toggle("on", button.dataset.projectFormat === format),
+      );
+    const current = ++version;
+    if (format !== "markdown") return;
     try {
-      let x = await api(
+      const result = await api("/markdown", "POST", {
+        text: input("description").value,
+      });
+      if (current === version && dialog.isConnected)
+        pane.innerHTML = result.html;
+    } catch (error) {
+      dialog.querySelector(".error").textContent = error.message;
+    }
+  }
+  dialog.querySelectorAll("[data-project-format]").forEach(
+    (button) =>
+      (button.onclick = () => {
+        format = button.dataset.projectFormat;
+        updatePreview();
+      }),
+  );
+  input("description").addEventListener("input", updatePreview);
+  function setColor(value) {
+    color = value.toUpperCase();
+    ["red", "green", "blue"].forEach((name, index) => {
+      input(name).value = parseInt(
+        color.slice(1 + index * 2, 3 + index * 2),
+        16,
+      );
+    });
+    input("hex").value = color;
+    dialog
+      .querySelectorAll(".color-preview")
+      .forEach((preview) => (preview.style.backgroundColor = color));
+    dialog.querySelector(".color-value").textContent = color;
+    dialog
+      .querySelectorAll("[data-color]")
+      .forEach((swatch) =>
+        swatch.classList.toggle("selected", swatch.dataset.color === color),
+      );
+  }
+  dialog
+    .querySelectorAll("[data-color]")
+    .forEach(
+      (swatch) => (swatch.onclick = () => setColor(swatch.dataset.color)),
+    );
+  dialog.querySelectorAll("[data-color-tab]").forEach(
+    (button) =>
+      (button.onclick = () => {
+        const rgb = button.dataset.colorTab === "rgb";
+        dialog.querySelector(".color-palette").hidden = rgb;
+        dialog.querySelector(".color-rgb").hidden = !rgb;
+        dialog
+          .querySelectorAll("[data-color-tab]")
+          .forEach((tab) => tab.classList.toggle("on", tab === button));
+      }),
+  );
+  ["red", "green", "blue"].forEach((name) =>
+    input(name).addEventListener("input", () => {
+      const components = ["red", "green", "blue"].map((key) => input(key));
+      if (
+        components.every(
+          (element) => element.value !== "" && element.validity.valid,
+        )
+      ) {
+        setColor(
+          "#" +
+            components
+              .map((element) =>
+                Number(element.value).toString(16).padStart(2, "0"),
+              )
+              .join(""),
+        );
+      }
+    }),
+  );
+  input("hex").addEventListener("input", () => {
+    if (/^#[0-9a-f]{6}$/i.test(input("hex").value))
+      setColor(input("hex").value);
+  });
+  dialog.querySelector(".cancel").onclick = () => dialog.close();
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    if (!input("name").value.trim()) {
+      dialog.querySelector(".error").textContent = "Введите название проекта";
+      input("name").focus();
+      return;
+    }
+    // Проверяем и скрытые RGB-поля: нельзя сохранить устаревший цвет после неверного ввода.
+    if (
+      !["red", "green", "blue", "hex"].every(
+        (name) => input(name).value !== "" && input(name).validity.valid,
+      )
+    ) {
+      dialog.querySelector(".error").textContent =
+        "Введите корректные значения RGB и HEX";
+      return;
+    }
+    if (labelInput.value.trim()) addProjectLabel();
+    try {
+      const saved = await api(
         "/projects" + (id ? "/" + id : ""),
         id ? "PUT" : "POST",
-        Object.fromEntries(new FormData(e.target)),
+        {
+          name: input("name").value,
+          description: input("description").value,
+          description_format: format,
+          labels: projectLabels,
+          color,
+        },
       );
-      d.close();
+      dialog.close();
       await refresh();
-      go("/projects/" + x.id);
-    } catch (e) {
-      d.querySelector(".error").textContent = e.message;
+      go("/projects/" + saved.id);
+    } catch (error) {
+      dialog.querySelector(".error").textContent = error.message;
     }
   };
-  d.onclose = () => d.remove();
-  d.showModal();
+  dialog.onclose = () => dialog.remove();
+  drawLabels();
+  setColor(color);
+  dialog.showModal();
+  updatePreview();
 }
 async function card(id) {
   let t = await api("/tasks/" + id),
@@ -464,7 +660,7 @@ async function card(id) {
     )
     .join(
       "",
-    )}</div></div><div class="detail-section kv"><div class="k">${icon("projects")} Проект</div><div class="v">${esc(proj(t.project_id)?.name || "Без проекта")}</div><div class="k">${icon("today")} Сделать до</div><div class="v ${days ? "error" : ""}">${esc(fmtDate)} ${days ? " · просрочено на " + days + " дн." : ""}</div><div class="k">${icon("all")} Родительская задача</div><div class="v">${parent ? `<a data-go href="/tasks/${parent.id}">${esc(parent.title)}</a>` : "Нет"}</div><div class="k">♧ Метки</div><div class="v">${t.labels.map((x) => `<span class="chip">${esc(x)}</span>`).join("") || "Нет"}</div></div><div class="detail-section"><h2>Описание</h2><div class="md description ${t.description_format === "markdown" ? "markdown" : ""}">${desc || "Нет описания"}</div></div></div><div class="subtask-section">${listBlock("Подзадачи", children, "subtasks", { sub: `${children.filter((x) => x.status === "done").length} из ${children.length} исполнено`, extra: `<a data-go class="btn" href="/tasks/new?parent=${id}">＋ Подзадача</a>` })}</div></div><aside class="card peek panel"><h2 class="sec">История</h2>${t.history.map((h) => `<div class="history-item"><b>${esc({ created: "Создана", updated: "Изменена", status_changed: "Смена статуса", due_changed: "Перенос срока", subtask_done: "Подзадача исполнена" }[h.type] || h.type)}</b><div class="sub-n">${new Date(h.at).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" })}</div>${h.data.title ? esc(h.data.title) : ""}${Object.hasOwn(h.data, "from") ? `<div class="sub-n">${esc(statuses[h.data.from] || h.data.from || "Без даты")} → ${esc(statuses[h.data.to] || h.data.to || "Без даты")}</div>` : ""}</div>`).join("")}</aside></div>`;
+    )}</div></div><div class="detail-section kv"><div class="k">${icon("projects")} Проект</div><div class="v">${esc(proj(t.project_id)?.name || "Без проекта")}</div><div class="k">${icon("today")} Сделать до</div><div class="v ${days ? "error" : ""}">${esc(fmtDate)} ${days ? " · просрочено на " + days + " дн." : ""}</div><div class="k">${icon("all")} Родительская задача</div><div class="v">${parent ? `<a data-go href="/tasks/${parent.id}">${esc(parent.title)}</a>` : "Нет"}</div><div class="k">♧ Метки</div><div class="v">${t.labels.map((x) => `<span class="chip">${esc(x)}</span>`).join("") || "Нет"}</div></div><div class="detail-section"><h2>Описание</h2><div class="md description ${t.description_format === "markdown" ? "markdown" : ""}">${desc || "Нет описания"}</div></div></div><div class="subtask-section">${listBlock("Подзадачи", children, "subtasks", { sub: `${children.filter((x) => x.status === "done").length} из ${children.length} исполнено`, extra: `<a data-go class="btn" href="/tasks/new?parent=${id}">＋ Подзадача</a>` })}</div></div><aside class="card peek panel"><h2 class="sec">История</h2>${t.history.map((h) => `<div class="history-item"><b>${esc({ created: "Создана", updated: "Редактирование", edited: "Редактирование", status_changed: "Смена статуса", due_changed: "Перенос срока", subtask_done: "Подзадача исполнена" }[h.type] || h.type)}</b><div class="sub-n">${new Date(h.at).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" })}</div>${h.data.title ? esc(h.data.title) : ""}${Object.hasOwn(h.data, "from") ? `<div class="sub-n">${esc(statuses[h.data.from] || h.data.from || "Без даты")} → ${esc(statuses[h.data.to] || h.data.to || "Без даты")}</div>` : ""}</div>`).join("")}</aside></div>`;
 }
 async function setStatus(id, status) {
   let t = tasks.find((x) => x.id === id);
