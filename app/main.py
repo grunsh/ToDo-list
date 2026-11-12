@@ -44,6 +44,23 @@ CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL 
 CREATE TABLE IF NOT EXISTS history(id INTEGER PRIMARY KEY, owner_id INTEGER NOT NULL REFERENCES users(id), task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, at TEXT NOT NULL, type TEXT NOT NULL, data TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS tasks_owner ON tasks(owner_id); CREATE INDEX IF NOT EXISTS history_task ON history(owner_id,task_id);
 """)
+        # Старую таблицу не пересоздаём: ALTER сохраняет все проекты и их связи.
+        # IMMEDIATE сериализует проверку схемы и изменения при параллельном старте.
+        c.execute("BEGIN IMMEDIATE")
+        columns = {row["name"] for row in c.execute("PRAGMA table_info(projects)")}
+        if "description_format" not in columns:
+            c.execute(
+                "ALTER TABLE projects ADD COLUMN description_format TEXT NOT NULL DEFAULT 'text'"
+            )
+        if "labels" not in columns:
+            c.execute(
+                "ALTER TABLE projects ADD COLUMN labels TEXT NOT NULL DEFAULT '[]'"
+            )
+        c.execute("""CREATE TABLE IF NOT EXISTS project_colors (
+            owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            color TEXT NOT NULL, used_at TEXT NOT NULL,
+            PRIMARY KEY (owner_id, color)
+        )""")
 
 
 init()
@@ -148,6 +165,22 @@ class ProjectIn(BaseModel):
     name: str = Field(max_length=200)
     description: str = Field(default="", max_length=20000)
     color: str = "#3451D1"
+    description_format: str = "text"
+    labels: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("description_format")
+    @classmethod
+    def valid_format(cls, value):
+        if value not in ("text", "markdown"):
+            raise ValueError("Недопустимый формат")
+        return value
+
+    @field_validator("labels")
+    @classmethod
+    def valid_labels(cls, value):
+        return list(
+            dict.fromkeys(label.strip()[:100] for label in value if label.strip())
+        )
 
     @field_validator("name")
     @classmethod
@@ -161,7 +194,7 @@ class ProjectIn(BaseModel):
     def valid_color(cls, v):
         if not re.fullmatch(r"#[0-9a-fA-F]{6}", v):
             raise ValueError("Некорректный цвет")
-        return v
+        return v.upper()
 
 
 class TaskIn(BaseModel):
@@ -345,13 +378,81 @@ def logout(req: Request, response: Response):
     return {"ok": True}
 
 
+def safe_markdown(text):
+    """Общий безопасный рендерер задач и проектов: исходный HTML не исполняется."""
+    rendered = markdown.markdown(html.escape(text), extensions=["fenced_code"])
+    return bleach.clean(
+        rendered,
+        tags={
+            "p",
+            "br",
+            "strong",
+            "em",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "ul",
+            "ol",
+            "li",
+            "code",
+            "pre",
+            "blockquote",
+            "a",
+            "hr",
+        },
+        attributes={"a": ["href", "title"]},
+        protocols={"http", "https", "mailto"},
+        strip=True,
+    )
+
+
+def project_obj(row):
+    project = obj(row)
+    project["description_html"] = (
+        safe_markdown(project["description"])
+        if project["description_format"] == "markdown"
+        else html.escape(project["description"]).replace("\n", "<br>")
+    )
+    return project
+
+
+def remember_project_color(c, owner, color):
+    """Цвет попадает в историю только вместе с успешным сохранением проекта."""
+    c.execute("DELETE FROM project_colors WHERE owner_id=? AND color=?", (owner, color))
+    c.execute(
+        "INSERT INTO project_colors(owner_id,color,used_at) VALUES(?,?,?)",
+        (owner, color, now()),
+    )
+    c.execute(
+        """DELETE FROM project_colors WHERE owner_id=? AND rowid NOT IN
+        (SELECT rowid FROM project_colors WHERE owner_id=? ORDER BY used_at DESC, rowid DESC LIMIT 20)""",
+        (owner, owner),
+    )
+
+
+@app.get("/api/project-colors")
+def project_colors(req: Request):
+    owner = auth(req)
+    with connect() as c:
+        return [
+            row["color"]
+            for row in c.execute(
+                "SELECT color FROM project_colors WHERE owner_id=? ORDER BY used_at DESC, rowid DESC LIMIT 20",
+                (owner,),
+            )
+        ]
+
+
 @app.get("/api/projects")
 def projects(req: Request):
     owner = auth(req)
     with connect() as c:
         return [
-            obj(x)
-            for x in c.execute(
+            project_obj(row)
+            for row in c.execute(
                 "SELECT * FROM projects WHERE owner_id=? ORDER BY name COLLATE NOCASE",
                 (owner,),
             )
@@ -363,23 +464,47 @@ def project_create(req: Request, p: ProjectIn):
     owner = auth(req, True)
     id = secrets.token_hex(16)
     with connect() as c:
+        c.execute("BEGIN IMMEDIATE")
         c.execute(
-            "INSERT INTO projects VALUES(?,?,?,?,?,?)",
-            (id, owner, p.name, p.description, p.color, now()),
+            """INSERT INTO projects
+            (id,owner_id,name,description,color,created_at,description_format,labels)
+            VALUES(?,?,?,?,?,?,?,?)""",
+            (
+                id,
+                owner,
+                p.name,
+                p.description,
+                p.color,
+                now(),
+                p.description_format,
+                json.dumps(p.labels, ensure_ascii=False),
+            ),
         )
-        return obj(get_owned(c, "projects", id, owner))
+        remember_project_color(c, owner, p.color)
+        return project_obj(get_owned(c, "projects", id, owner))
 
 
 @app.put("/api/projects/{id}")
 def project_update(id: str, req: Request, p: ProjectIn):
     owner = auth(req, True)
     with connect() as c:
+        c.execute("BEGIN IMMEDIATE")
         get_owned(c, "projects", id, owner)
         c.execute(
-            "UPDATE projects SET name=?,description=?,color=? WHERE id=? AND owner_id=?",
-            (p.name, p.description, p.color, id, owner),
+            """UPDATE projects SET name=?,description=?,color=?,description_format=?,labels=?
+            WHERE id=? AND owner_id=?""",
+            (
+                p.name,
+                p.description,
+                p.color,
+                p.description_format,
+                json.dumps(p.labels, ensure_ascii=False),
+                id,
+                owner,
+            ),
         )
-        return obj(get_owned(c, "projects", id, owner))
+        remember_project_color(c, owner, p.color)
+        return project_obj(get_owned(c, "projects", id, owner))
 
 
 @app.get("/api/tasks")
@@ -446,7 +571,21 @@ def save_task(c, owner, t, id=None):
                 history(c, owner, id, typ, {"from": old[col], "to": getattr(t, col)})
         if old["status"] != "done" and t.status == "done" and t.parent_id:
             history(c, owner, t.parent_id, "subtask_done", {"title": t.title, "id": id})
-        history(c, owner, id, "updated", {})
+        edited_fields = [
+            field
+            for field in (
+                "title",
+                "description",
+                "description_format",
+                "parent_id",
+                "project_id",
+                "labels",
+            )
+            if (json.loads(old[field]) if field == "labels" else old[field])
+            != getattr(t, field)
+        ]
+        if edited_fields:
+            history(c, owner, id, "edited", {"fields": edited_fields})
     else:
         id = secrets.token_hex(16)
         c.execute(
@@ -479,6 +618,8 @@ def bulk(req: Request, b: Bulk):
         c.execute("BEGIN IMMEDIATE")
         rows = [get_owned(c, "tasks", id, owner) for id in b.ids]
         for row in rows:
+            if row["due_date"] == b.due_date:
+                continue
             c.execute(
                 "UPDATE tasks SET due_date=? WHERE id=? AND owner_id=?",
                 (b.due_date, row["id"], owner),
@@ -498,13 +639,39 @@ def task_get(id: str, req: Request):
     owner = auth(req)
     with connect() as c:
         task = obj(get_owned(c, "tasks", id, owner))
-        task["history"] = [
-            obj(x)
-            for x in c.execute(
-                "SELECT * FROM history WHERE owner_id=? AND task_id=? ORDER BY id DESC",
+        entries = [
+            obj(row)
+            for row in c.execute(
+                "SELECT * FROM history WHERE owner_id=? AND task_id=? ORDER BY id",
                 (owner, id),
             )
         ]
+        # Старые пустые updated после изменения статуса/срока были техническим
+        # дублем. Проецируем историю, не изменяя исходные записи в БД.
+        visible = []
+        previous = None
+        for entry in entries:
+            duplicate = False
+            if (
+                entry["type"] == "updated"
+                and not entry["data"]
+                and previous
+                and previous["type"] in ("status_changed", "due_changed")
+            ):
+                try:
+                    seconds = (
+                        datetime.fromisoformat(entry["at"])
+                        - datetime.fromisoformat(previous["at"])
+                    ).total_seconds()
+                    duplicate = 0 <= seconds <= 1
+                except (ValueError, TypeError):
+                    pass
+            if not duplicate:
+                if entry["type"] == "updated":
+                    entry["type"] = "edited"
+                visible.append(entry)
+            previous = entry
+        task["history"] = list(reversed(visible))
         return task
 
 
@@ -587,35 +754,7 @@ class MarkdownIn(BaseModel):
 @app.post("/api/markdown")
 def render_markdown(req: Request, body: MarkdownIn):
     auth(req, True)
-    # Исходный HTML экранируется до преобразования; затем разрешён только узкий набор тегов.
-    rendered = markdown.markdown(html.escape(body.text), extensions=["fenced_code"])
-    safe = bleach.clean(
-        rendered,
-        tags={
-            "p",
-            "br",
-            "strong",
-            "em",
-            "h1",
-            "h2",
-            "h3",
-            "h4",
-            "h5",
-            "h6",
-            "ul",
-            "ol",
-            "li",
-            "code",
-            "pre",
-            "blockquote",
-            "a",
-            "hr",
-        },
-        attributes={"a": ["href", "title"]},
-        protocols={"http", "https", "mailto"},
-        strip=True,
-    )
-    return {"html": safe}
+    return {"html": safe_markdown(body.text)}
 
 
 @app.get("/{path:path}")

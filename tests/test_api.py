@@ -262,3 +262,139 @@ def test_schema_dictionary_covers_every_column(env):
             columns = {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
             assert set(descriptions[table]) == columns
             assert all(len(v) > 15 for v in descriptions[table].values())
+
+
+def test_precise_history_and_legacy_projection(env):
+    m, a, _ = env
+    t = a.post("/api/tasks", json={"title": "one"}).json()
+    url = "/api/tasks/" + t["id"]
+    assert a.put(url, json=t).status_code == 200
+    assert [h["type"] for h in a.get(url).json()["history"]] == ["created"]
+    t = a.put(
+        url,
+        json={
+            **t,
+            "status": "in_progress",
+            "due_date": "2026-12-01",
+            "title": "two",
+            "labels": ["x"],
+        },
+    ).json()
+    hist = a.get(url).json()["history"]
+    assert [h["type"] for h in hist] == [
+        "edited",
+        "due_changed",
+        "status_changed",
+        "created",
+    ]
+    assert set(hist[0]["data"]["fields"]) == {"title", "labels"}
+    assert (
+        a.post(
+            "/api/tasks/bulk-due", json={"ids": [t["id"]], "due_date": "2026-12-01"}
+        ).status_code
+        == 200
+    )
+    assert len(a.get(url).json()["history"]) == 4
+    with m.connect() as c:
+        c.execute(
+            "INSERT INTO history(owner_id,task_id,at,type,data) VALUES(?,?,?,?,?)",
+            (1, t["id"], "2026-01-01T00:00:00+00:00", "status_changed", "{}"),
+        )
+        c.execute(
+            "INSERT INTO history(owner_id,task_id,at,type,data) VALUES(?,?,?,?,?)",
+            (1, t["id"], "2026-01-01T00:00:00.5+00:00", "updated", "{}"),
+        )
+        c.execute(
+            "INSERT INTO history(owner_id,task_id,at,type,data) VALUES(?,?,?,?,?)",
+            (1, t["id"], "2026-01-01T00:00:03+00:00", "updated", "{}"),
+        )
+    hist = a.get(url).json()["history"]
+    assert [h["type"] for h in hist[:2]] == ["edited", "status_changed"]
+    with m.connect() as c:
+        assert (
+            c.execute("SELECT count(*) FROM history WHERE type='updated'").fetchone()[0]
+            == 2
+        )
+
+
+def test_project_markdown_labels_and_recent_colors(env):
+    m, a, b = env
+    p = a.post(
+        "/api/projects",
+        json={
+            "name": "P",
+            "description": "**bold** <script>x</script> [x](javascript:alert(1))",
+            "description_format": "markdown",
+            "labels": ["a", "b"],
+            "color": "#abcdef",
+        },
+    )
+    assert p.status_code == 200
+    data = p.json()
+    assert (
+        data["color"] == "#ABCDEF"
+        and data["labels"] == ["a", "b"]
+        and "<strong>bold</strong>" in data["description_html"]
+        and "<script>" not in data["description_html"]
+        and 'href="javascript:' not in data["description_html"]
+    )
+    assert a.get("/api/projects").json()[0]["labels"] == ["a", "b"]
+    assert b.get("/api/project-colors").json() == []
+    for i in range(22):
+        assert (
+            a.put(
+                "/api/projects/" + data["id"], json={"name": "P", "color": f"#{i:06x}"}
+            ).status_code
+            == 200
+        )
+    colors = a.get("/api/project-colors").json()
+    assert len(colors) == 20 and colors[0] == "#000015" and "#000000" not in colors
+    assert (
+        a.put(
+            "/api/projects/" + data["id"], json={"name": "P", "color": "#000005"}
+        ).status_code
+        == 200
+    )
+    colors = a.get("/api/project-colors").json()
+    assert colors[0] == "#000005" and colors.count("#000005") == 1
+    assert b.put("/api/projects/" + data["id"], json={"name": "P"}).status_code == 404
+    assert (
+        a.post("/api/projects", json={"name": "bad", "color": "red"}).status_code == 422
+    )
+    assert (
+        a.post(
+            "/api/projects", json={"name": "bad", "description_format": "html"}
+        ).status_code
+        == 422
+    )
+    assert (
+        a.post("/api/projects", json={"name": "bad", "labels": ["x"] * 51}).status_code
+        == 422
+    )
+
+
+def test_legacy_project_migration_preserves_data(tmp_path, monkeypatch):
+    import sqlite3, importlib
+
+    path = tmp_path / "legacy.sqlite3"
+    c = sqlite3.connect(path)
+    c.executescript(
+        """CREATE TABLE users(id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE TABLE projects(id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL REFERENCES users(id), name TEXT NOT NULL, description TEXT NOT NULL, color TEXT NOT NULL, created_at TEXT NOT NULL);
+    INSERT INTO users VALUES(1,'old','hash','2026'); INSERT INTO projects VALUES('p',1,'Old','text','#123456','2026');"""
+    )
+    c.commit()
+    c.close()
+    monkeypatch.setenv("TODO_DB", str(path))
+    import app.main as m
+
+    importlib.reload(m)
+    m.init()
+    with m.connect() as c:
+        project = dict(c.execute("SELECT * FROM projects WHERE id='p'").fetchone())
+        assert (
+            project["name"] == "Old"
+            and project["description"] == "text"
+            and project["description_format"] == "text"
+            and project["labels"] == "[]"
+        )
